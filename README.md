@@ -47,3 +47,7 @@ See:
 - [`docs/LET-GO-ISSUES.md`](docs/LET-GO-ISSUES.md)
 
 No real provider credentials or reset credits are used by automated tests.
+
+## Coding agent sessions
+
+- From PLAN.md to c7692a8 https://pi.dev/session/#ebe762f3695752c2afe8e9efe645aeb8
