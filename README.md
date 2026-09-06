@@ -17,7 +17,7 @@ Sibling Jolt project: <https://github.com/jasalt/jolt-time-tracker>
 
 let-go has somewhat lighter runtime memory usage than Jolt, as seen in a rough [CLI program benchmark](https://github.com/jasalt/mdd2/blob/platform-comparison/platform-comparison/PLATFORM-COMPARISON.md), and a minimal let-go GTK4 application also requires less memory (~168 MiB RSS versus ~212 MiB RSS).
 
-The developer-experience impact of Go as a middle layer between Gotk4 and the language, rather than direct FFI, is documented in [LET-GO-ISSUES.md](docs/LET-GO-ISSUES.md).
+The developer-experience of Go as a middle layer between GTK4 and the language has some warts compared to direct FFI, some documented in [LET-GO-ISSUES.md](docs/LET-GO-ISSUES.md) and this repo's issue tracker.
 
 Linux native GTK4 on let-go is lighter than Fyne on pure Go; see [letgo-benchmarks.md](docs/letgo-benchmarks.md#gui-results).
 
