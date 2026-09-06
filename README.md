@@ -3,6 +3,10 @@
 Time tracker GTK4 client (LLM) re-write experiment from <https://github.com/jasalt/go-time-tracker> to [let-go](https://github.com/nooga/let-go) inspired by <https://yogthos.net/posts/2026-08-29-glimmer-ui.html> using a small mechanical Go /
 gotk4 host boundary.
 
+Primary design principle:
+
+> Port Glimmer's Clojure component/reconciler model to let-go, implement GTK widget semantics in Clojure, and use Go only where let-go cannot yet directly satisfy gotk4's callback or host-runtime requirements.
+
 ![let-go GTK front page with mock-provider data](docs/screenshots/letgo-mock-front-page.png)
 
 Sibling Jolt project: <https://github.com/jasalt/jolt-time-tracker>
@@ -60,6 +64,7 @@ containing `{"provider":"mock"}` selects the built-in mock provider.
 
 See:
 
+- [`PLAN.md`](PLAN.md) Primary project specification
 - [`docs/letgo-baseline.md`](docs/letgo-baseline.md)
 - [`docs/letgo-architecture.md`](docs/letgo-architecture.md)
 - [`docs/letgo-development.md`](docs/letgo-development.md)
