@@ -64,12 +64,13 @@ containing `{"provider":"mock"}` selects the built-in mock provider.
 
 See:
 
-- [`PLAN.md`](PLAN.md) Primary project specification
-- [`docs/letgo-baseline.md`](docs/letgo-baseline.md)
-- [`docs/letgo-architecture.md`](docs/letgo-architecture.md)
-- [`docs/letgo-development.md`](docs/letgo-development.md)
-- [`docs/letgo-benchmarks.md`](docs/letgo-benchmarks.md)
-- [`docs/LET-GO-ISSUES.md`](docs/LET-GO-ISSUES.md)
+- [`PLAN.md`](PLAN.md) — primary project specification
+- [`docs/letgo-baseline.md`](docs/letgo-baseline.md) — pinned toolchain/dependency revisions and environment this experiment is regression-tested against
+- [`docs/letgo-architecture.md`](docs/letgo-architecture.md) — Gate A/B/C feasibility decisions (callback bridging, portable Glimmer backend, GTK backend) and the reasoning behind each
+- [`docs/letgo-development.md`](docs/letgo-development.md) — day-to-day toolchain, build, and test commands for working on this repo
+- [`docs/letgo-benchmarks.md`](docs/letgo-benchmarks.md) — startup/memory measurements comparing let-go GTK4, Jolt, and Fyne builds
+- [`docs/LET-GO-ISSUES.md`](docs/LET-GO-ISSUES.md) — let-go gaps found while building this (compiler context, callback coercion) and the downstream workarounds in place
+- [`docs/FOLLOWUP-ISSUE.md`](docs/FOLLOWUP-ISSUE.md) — tracking note for the upstream callback-coercion issue filed against let-go
 
 No real provider credentials or reset credits are used by automated tests.
 
