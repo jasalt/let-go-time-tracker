@@ -1,6 +1,6 @@
 # lgtt
 
-A let-go-first Glimmer-style GTK4 time tracker, using a small mechanical Go /
+A let-go-first [Glimmer-style](https://github.com/jolt-lang/glimmer) GTK4 time tracker, using a small mechanical Go /
 gotk4 host boundary.
 
 ## Build and test
