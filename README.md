@@ -1,7 +1,25 @@
 # lgtt
 
-A let-go-first [Glimmer-style](https://github.com/jolt-lang/glimmer) GTK4 time tracker, using a small mechanical Go /
+Time tracker GTK4 client (LLM) re-write experiment from https://github.com/jasalt/go-time-tracker to [let-go](https://github.com/nooga/let-go) inspired by https://yogthos.net/posts/2026-08-29-glimmer-ui.html using a small mechanical Go /
 gotk4 host boundary.
+
+Sibling Jolt project: https://github.com/jasalt/jolt-time-tracker
+
+## Goals
+
+- Compare performance and resource usage characteristics between let-go and Jolt (Chez Scheme)
+- Differences in using GTK4 via [Jolt's direct FFI](https://jolt-lang.net/docs/native-interop.html) v.s. Go's [Gotk4 library](https://github.com/diamondburned/gotk4) and the flexibility of the reactive UI development model
+- Discovering upstream issues
+
+### Takeaways so far
+
+let-go has somewhat lighter runtime in memory usage than Jolt as seen in a rough [CLI program benchmark](https://github.com/jasalt/mdd2/blob/platform-comparison/platform-comparison/PLATFORM-COMPARISON.md)), which unsurprisingly also shows with a minimal let-go GTK4 application also requiring less memory (~168MiB RSS v.s. ~212MiB RSS).
+
+Impact in developer experience of Go being a middle layer between Gotk4 and the language instead of direct FFI is yet to be documented.
+
+Also comparing weight different UI toolkits, Linux native GTK4 on let-go is lighter than Fyne on pure Go ([letgo-benchmarks.md](https://github.com/jasalt/let-go-time-tracker/blob/master/docs/letgo-benchmarks.md#gui-results)).
+
+Read more from the LLM generated docs below.
 
 ## Build and test
 
