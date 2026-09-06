@@ -1,25 +1,27 @@
 # lgtt
 
-Time tracker GTK4 client (LLM) re-write experiment from https://github.com/jasalt/go-time-tracker to [let-go](https://github.com/nooga/let-go) inspired by https://yogthos.net/posts/2026-08-29-glimmer-ui.html using a small mechanical Go /
+Time tracker GTK4 client (LLM) re-write experiment from <https://github.com/jasalt/go-time-tracker> to [let-go](https://github.com/nooga/let-go) inspired by <https://yogthos.net/posts/2026-08-29-glimmer-ui.html> using a small mechanical Go /
 gotk4 host boundary.
 
-Sibling Jolt project: https://github.com/jasalt/jolt-time-tracker
+![let-go GTK front page with mock-provider data](docs/screenshots/letgo-mock-front-page.png)
+
+Sibling Jolt project: <https://github.com/jasalt/jolt-time-tracker>
 
 ## Goals
 
 - Compare performance and resource usage characteristics between let-go and Jolt (Chez Scheme)
-- Differences in using GTK4 via [Jolt's direct FFI](https://jolt-lang.net/docs/native-interop.html) v.s. Go's [Gotk4 library](https://github.com/diamondburned/gotk4) and the flexibility of the reactive UI development model
-- Discovering upstream issues
+- Compare GTK4 via [Jolt's direct FFI](https://jolt-lang.net/docs/native-interop.html) versus Go's [Gotk4 library](https://github.com/diamondburned/gotk4), including reactive UI development
+- Discover upstream issues
 
 ### Takeaways so far
 
-let-go has somewhat lighter runtime in memory usage than Jolt as seen in a rough [CLI program benchmark](https://github.com/jasalt/mdd2/blob/platform-comparison/platform-comparison/PLATFORM-COMPARISON.md)), which unsurprisingly also shows with a minimal let-go GTK4 application also requiring less memory (~168MiB RSS v.s. ~212MiB RSS).
+let-go has somewhat lighter runtime memory usage than Jolt, as seen in a rough [CLI program benchmark](https://github.com/jasalt/mdd2/blob/platform-comparison/platform-comparison/PLATFORM-COMPARISON.md), and a minimal let-go GTK4 application also requires less memory (~168 MiB RSS versus ~212 MiB RSS).
 
-Impact in developer experience of Go being a middle layer between Gotk4 and the language instead of direct FFI is yet to be documented.
+The developer-experience impact of Go as a middle layer between Gotk4 and the language, rather than direct FFI, is documented in [LET-GO-ISSUES.md](docs/LET-GO-ISSUES.md).
 
-Also comparing weight different UI toolkits, Linux native GTK4 on let-go is lighter than Fyne on pure Go ([letgo-benchmarks.md](https://github.com/jasalt/let-go-time-tracker/blob/master/docs/letgo-benchmarks.md#gui-results)).
+Linux native GTK4 on let-go is lighter than Fyne on pure Go; see [letgo-benchmarks.md](docs/letgo-benchmarks.md#gui-results).
 
-Read more from the LLM generated docs below.
+Read more in the generated experiment documentation below.
 
 ## Build and test
 
@@ -68,4 +70,4 @@ No real provider credentials or reset credits are used by automated tests.
 
 ## Coding agent sessions
 
-- From PLAN.md to c7692a8 https://pi.dev/session/#ebe762f3695752c2afe8e9efe645aeb8
+- From PLAN.md to c7692a8 <https://pi.dev/session/#ebe762f3695752c2afe8e9efe645aeb8>
