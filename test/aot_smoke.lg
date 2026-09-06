@@ -1,0 +1,13 @@
+(ns aot-smoke
+  (:require [glimmer.backend :as backend]
+            [glimmer.ratom :as r]
+            [gtt.format :as format]))
+
+(defn -main [& _]
+  (let [state (r/atom 1)]
+    (r/swap! state inc)
+    (when-not (and (= 2 @state) (= "01:01:01" (format/clock 3661000)))
+      (throw (ex-info "native smoke failed" {})))
+    (println "native headless smoke passed")))
+
+(apply -main *command-line-args*)

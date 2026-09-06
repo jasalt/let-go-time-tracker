@@ -1,0 +1,59 @@
+(ns glimmer.ratom-test
+  (:require [clojure.test :refer [deftest is run-tests]]
+            [glimmer.ratom :as r]))
+
+(deftest atom-and-change-suppression
+  (let [a (r/atom 1) events (clojure.core/atom [])]
+    (is (= 1 @a))
+    (r/add-watch! a :test #(clojure.core/swap! events conj [%1 %3 %4]))
+    (r/reset! a 1)
+    (is (empty? @events))
+    (r/swap! a + 2)
+    (is (= 3 @a))
+    (is (= [[:test 1 3]] @events))
+    (r/remove-watch! a :test)
+    (is (= 0 (r/watch-count a)))))
+
+(deftest cursor-read-write-and-nesting
+  (let [a (r/atom {:user {:name "A" :age 2}})
+        user (r/cursor a [:user])
+        name (r/cursor a [:user :name])
+        hits (clojure.core/atom 0)]
+    (is (= {:name "A" :age 2} @user))
+    (is (= "A" @name))
+    (r/add-watch! name :name (fn [& _] (clojure.core/swap! hits inc)))
+    (r/reset! name "B")
+    (is (= "B" (get-in @a [:user :name])))
+    (r/swap! user assoc :age 3)
+    (is (= 3 (get-in @a [:user :age])))
+    (is (= 1 @hits))
+    (r/remove-watch! name :name)))
+
+(deftest reactions-track-and-clean-dependencies
+  (let [source (r/atom 2)
+        doubled (r/reaction #(* 2 @source))
+        hits (clojure.core/atom 0)]
+    (r/add-watch! doubled :view (fn [& _] (clojure.core/swap! hits inc)))
+    (is (= 4 @doubled))
+    (is (= 1 (r/watch-count source)))
+    (r/reset! source 3)
+    (is (= 6 @doubled))
+    (is (= 1 @hits))
+    (is (= 1 (r/watch-count source)))
+    (r/reset! source 3)
+    (is (= 1 @hits))
+    (r/dispose! doubled)
+    (is (= 0 (r/watch-count source)))))
+
+(deftest component-track-disposal-does-not-leak
+  (let [source (r/atom 0) renders (clojure.core/atom 0)
+        watcher #(clojure.core/swap! renders inc)]
+    (dotimes [_ 100]
+      (let [tracking (r/track #(identity @source) watcher)]
+        (is (= 1 (r/watch-count source)))
+        (r/untrack! tracking watcher)
+        (is (= 0 (r/watch-count source)))))
+    (r/reset! source 1)
+    (is (= 0 @renders))))
+
+(run-tests)

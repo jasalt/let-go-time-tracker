@@ -1,0 +1,59 @@
+(ns glimmer-gtk.core-test
+  (:require [clojure.test :refer [deftest is run-tests]]
+            [glimmer-gtk.core :as gtk]))
+
+(defn fake-host [calls]
+  (let [make (fn [kind]
+               (fn [& args]
+                 (let [node {:kind kind :id (count @calls)}]
+                   (swap! calls conj [:make kind args])
+                   node)))]
+    {:window (make :window) :box (make :box) :label (make :label)
+     :entry (make :entry) :button (make :button)
+     :check-button (make :check) :dropdown (make :dropdown)
+     :scrolled-window (make :scroll)
+     :visible! #(swap! calls conj [:visible %1 %2])
+     :sensitive! #(swap! calls conj [:sensitive %1 %2])
+     :hexpand! #(swap! calls conj [:hexpand %1 %2])
+     :vexpand! #(swap! calls conj [:vexpand %1 %2])
+     :window-title! #(swap! calls conj [:title %1 %2])
+     :window-size! #(swap! calls conj [:size %1 %2 %3])
+     :label! #(swap! calls conj [:label %1 %2])
+     :button-label! #(swap! calls conj [:button-label %1 %2])
+     :entry-text! #(swap! calls conj [:entry-text %1 %2])
+     :placeholder! #(swap! calls conj [:placeholder %1 %2])
+     :active! #(swap! calls conj [:active %1 %2])
+     :dropdown-items! #(swap! calls conj [:items %1 %2])
+     :connect-click (fn [handle _] (swap! calls conj [:connect-click handle]) :click-id)
+     :connect-change (fn [handle _] (swap! calls conj [:connect-change handle]) :change-id)
+     :connect-toggle (fn [handle _] (swap! calls conj [:connect-toggle handle]) :toggle-id)
+     :disconnect #(swap! calls conj [:disconnect %1 %2])
+     :set-child! #(swap! calls conj [:set-child %1 %2])
+     :clear-child! #(swap! calls conj [:clear-child %1 %2])
+     :append! #(swap! calls conj [:append %1 %2])
+     :remove! #(swap! calls conj [:remove %1 %2])
+     :reorder! #(swap! calls conj [:reorder %1 %2 %3])
+     :schedule #(% ) :run #(% )}))
+
+(deftest vocabulary-props-handlers-and-containers
+  (let [calls (atom []) backend (gtk/create-backend (fake-host calls))
+        tags [:window :vbox :hbox :label :entry :button :check-button
+              :dropdown :scrolled-window]
+        nodes (into {} (map (fn [tag] [tag ((:create! backend) tag {})]) tags))]
+    (is (= (set tags) (set (keys nodes))))
+    ((:apply-props! backend) (:window nodes) {}
+     {:title "Title" :width 400 :height 300 :visible true})
+    ((:apply-props! backend) (:button nodes) {:sensitive true}
+     {:label "Go" :sensitive false :on-click (fn [])})
+    ((:apply-props! backend) (:entry nodes) {}
+     {:text "x" :placeholder "type" :on-change (fn [])})
+    ((:append-child! backend) (:vbox nodes) (:label nodes))
+    ((:append-child! backend) (:window nodes) (:vbox nodes))
+    (is (some #(= :append (first %)) @calls))
+    (is (some #(= :set-child (first %)) @calls))
+    (is (some #(= :connect-click (first %)) @calls))
+    (is (some #(= :connect-change (first %)) @calls))
+    (is (some #(= false (last %))
+              (filter #(= :sensitive (first %)) @calls)))))
+
+(run-tests)

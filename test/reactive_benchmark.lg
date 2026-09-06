@@ -1,0 +1,27 @@
+(ns reactive-benchmark
+  (:require [glimmer.backend :as backend]
+            [glimmer.core :as core]
+            [glimmer.ratom :as r]))
+
+(defn install! []
+  (backend/reset-backends!)
+  (backend/register! :bench
+    {:create! (fn [_ _] (atom nil))
+     :apply-props! (fn [_ _ _])
+     :append-child! (fn [_ _]) :remove-child! (fn [_ _])
+     :replace-child! (fn [_ _ _]) :reorder-child! (fn [_ _ _])
+     :text->element (fn [_] (atom nil))})
+  (backend/select! :bench))
+
+(defn bench [n]
+  (install!)
+  (let [value (r/atom 0)
+        mount (core/mount! (fn [] [:label {:value @value}]))
+        start (System/nanoTime)]
+    (dotimes [i n] (r/reset! value i))
+    (let [elapsed (- (System/nanoTime) start)]
+      ((:dispose mount))
+      {:updates n :total-ms (/ elapsed 1000000.0)
+       :ns-per-update (/ elapsed n)})))
+
+(doseq [n [100 1000 10000]] (println (bench n)))

@@ -1,0 +1,75 @@
+(ns glimmer.core-test
+  (:require [clojure.test :refer [deftest is run-tests]]
+            [glimmer.backend :as backend]
+            [glimmer.core :as core]
+            [glimmer.ratom :as r]))
+
+(defn setup! [ops scheduled]
+  (backend/reset-backends!)
+  (let [next-id (atom 0)]
+    (backend/register! :mock
+      {:create! (fn [tag props]
+                  (let [id (swap! next-id inc)]
+                    (swap! ops conj [:create id tag props]) id))
+       :apply-props! #(swap! ops conj [:props %1 %2 %3])
+       :append-child! #(swap! ops conj [:append %1 %2])
+       :remove-child! #(swap! ops conj [:remove %1 %2])
+       :replace-child! #(swap! ops conj [:replace %1 %2 %3])
+       :reorder-child! #(swap! ops conj [:reorder %1 %2 %3])
+       :schedule #(swap! scheduled conj %)
+       :run #(% )
+       :text->element (fn [text]
+                        (let [id (swap! next-id inc)]
+                          (swap! ops conj [:text id (str text)]) id))})
+    (backend/select! :mock)))
+
+(deftest create-update-replace-and-children
+  (let [ops (atom []) scheduled (atom [])]
+    (setup! ops scheduled)
+    (let [a (core/mount-node! [:box {:gap 1} [:label {:text "A"}] "hello"])
+          b (core/reconcile-node! a [:box {:gap 2} [:button {:text "B"}]])]
+      (is (= :box (:tag b)))
+      (is (some #(= [:props 1 {:gap 1} {:gap 2}] %) @ops))
+      (is (some #(= :replace (first %)) @ops))
+      (is (some #(= :remove (first %)) @ops)))))
+
+(deftest keyed-children-reorder-without-recreate
+  (let [ops (atom []) scheduled (atom [])]
+    (setup! ops scheduled)
+    (let [a (core/mount-node! [:box
+                               [:label {:key :a :text "A"}]
+                               [:label {:key :b :text "B"}]])
+          creates (count (filter #(= :create (first %)) @ops))]
+      (core/reconcile-node! a [:box
+                               [:label {:key :b :text "B"}]
+                               [:label {:key :a :text "A"}]])
+      (is (= creates (count (filter #(= :create (first %)) @ops))))
+      (is (= 2 (count (filter #(= :reorder (first %)) @ops)))))))
+
+(deftest functions-conditionals-and-stateful-form
+  (let [ops (atom []) scheduled (atom [])
+        greeting (fn [name] [:label {:text (str "Hello " name)}])
+        counter (fn [] (let [n (r/atom 0)]
+                         (fn [] [:button {:text (str @n)}])))]
+    (setup! ops scheduled)
+    (is (= :component (:kind (core/mount-node! [greeting "A"]))))
+    (is (= :component (:kind (core/mount-node! [counter]))))
+    (is (nil? (core/mount-node! nil)))))
+
+(deftest reactive-rerender-coalesces-on-running-loop
+  (let [ops (atom []) scheduled (atom []) value (r/atom "A") renders (atom 0)]
+    (setup! ops scheduled)
+    (reset! backend/loop-running true)
+    (let [mount (core/mount! #(do (swap! renders inc)
+                                  [:label {:text @value}]))]
+      (r/reset! value "B")
+      (r/reset! value "C")
+      (is (= 1 (count @scheduled)))
+      ((first @scheduled))
+      (is (= 2 @renders))
+      (is (= 1 (r/watch-count value)))
+      ((:dispose mount))
+      (is (= 0 (r/watch-count value))))
+    (reset! backend/loop-running false)))
+
+(run-tests)

@@ -1,0 +1,67 @@
+(ns glimmer.backend)
+
+(defonce backends (atom {}))
+(defonce active-backend (atom nil))
+(defonce loop-running (atom false))
+
+(def required-operations
+  [:create! :apply-props! :append-child! :remove-child! :replace-child!
+   :reorder-child! :schedule :run :text->element])
+
+(defn register! [name operations]
+  (when-not (keyword? name)
+    (throw (ex-info "backend name must be a keyword" {:name name})))
+  (swap! backends assoc name (assoc operations :name name))
+  name)
+
+(defn unregister! [name]
+  (swap! backends dissoc name)
+  (when (= name @active-backend) (reset! active-backend nil)))
+
+(defn select! [name]
+  (when-not (contains? @backends name)
+    (throw (ex-info "missing backend" {:backend name})))
+  (reset! active-backend name)
+  name)
+
+(defn backend
+  ([] (backend @active-backend))
+  ([name]
+   (or (get @backends name)
+       (throw (ex-info "missing backend" {:backend name})))))
+
+(defn operation [op]
+  (or (get (backend) op)
+      (throw (ex-info "missing backend operation"
+                      {:backend @active-backend :operation op}))))
+
+(defn dispatch! [op & args]
+  (apply (operation op) args))
+
+(defn create! [tag props] (dispatch! :create! tag props))
+(defn apply-props! [element old-props new-props]
+  (dispatch! :apply-props! element old-props new-props))
+(defn append-child! [parent child] (dispatch! :append-child! parent child))
+(defn remove-child! [parent child] (dispatch! :remove-child! parent child))
+(defn replace-child! [parent old-child new-child]
+  (dispatch! :replace-child! parent old-child new-child))
+(defn reorder-child! [parent child index]
+  (dispatch! :reorder-child! parent child index))
+(defn text->element [text] (dispatch! :text->element text))
+
+(defn schedule! [f]
+  (if (and @loop-running (get (backend) :schedule))
+    (dispatch! :schedule f)
+    (f)))
+
+(defn run! [f]
+  (let [runner (get (backend) :run)]
+    (reset! loop-running true)
+    (try
+      (if runner (runner f) (f))
+      (finally (reset! loop-running false)))))
+
+(defn reset-backends! []
+  (reset! backends {})
+  (reset! active-backend nil)
+  (reset! loop-running false))

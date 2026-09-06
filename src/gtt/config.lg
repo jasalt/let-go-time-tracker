@@ -1,0 +1,40 @@
+(ns gtt.config
+  (:require [io :as io]
+            [json :as json]
+            [os :as os]
+            [syscall :as syscall]
+            [clojure.string :as string]))
+
+(defn home [] (or (os/getenv "HOME") "."))
+(defn config-home []
+  (let [xdg (os/getenv "XDG_CONFIG_HOME")]
+    (if (string/blank? xdg) (str (home) "/.config") xdg)))
+(defn canonical-path [] (str (config-home) "/gtt/config.json"))
+(defn legacy-path [] (str (home) "/.config/clockify-tui/config.json"))
+
+(defn normalize [config]
+  (update config :provider #(or % "clockify")))
+
+(defn load-config
+  ([] (load-config (canonical-path) (legacy-path)))
+  ([canonical legacy]
+   (cond
+     (io/file-exists? canonical)
+     (normalize (json/read-json (slurp canonical) {:keywords? true}))
+     (io/file-exists? legacy)
+     (normalize (assoc (json/read-json (slurp legacy) {:keywords? true}) :provider "clockify"))
+     :else (normalize {}))))
+
+(defn save-config!
+  ([config] (save-config! (canonical-path) config))
+  ([path config]
+   (let [slash (string/last-index-of path "/")
+         dir (if (neg? slash) "." (subs path 0 slash))
+         tmp (str path ".tmp")]
+     (io/mkdir dir)
+     (syscall/chmod dir 448) ; 0700
+     (spit tmp (json/write-json (normalize config)))
+     (syscall/chmod tmp 384) ; 0600
+     (os/rename tmp path)
+     (syscall/chmod path 384)
+     path)))

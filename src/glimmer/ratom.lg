@@ -1,0 +1,119 @@
+(ns glimmer.ratom
+  (:refer-clojure :exclude [atom reset! swap!]))
+
+(def ^:dynamic *collector* nil)
+
+(defprotocol IReactiveCell
+  (-value [this])
+  (-reset! [this value])
+  (-add-watch! [this key watcher])
+  (-remove-watch! [this key])
+  (-watch-count [this]))
+
+(defn- collect! [cell]
+  (when *collector* (clojure.core/swap! *collector* conj cell)))
+
+(deftype ReactiveAtom [source watches]
+  IDeref
+  (-deref [this]
+    (collect! this)
+    @source)
+  IReactiveCell
+  (-value [this] @source)
+  (-reset! [this value]
+    (let [old @source]
+      (clojure.core/reset! source value)
+      (when (not= old value)
+        (doseq [[key watcher] @watches]
+          (watcher key this old value)))
+      value))
+  (-add-watch! [this key watcher]
+    (clojure.core/swap! watches assoc key watcher)
+    this)
+  (-remove-watch! [this key]
+    (clojure.core/swap! watches dissoc key)
+    this)
+  (-watch-count [this] (count @watches)))
+
+(defn atom [value]
+  (ReactiveAtom. (clojure.core/atom value) (clojure.core/atom {})))
+
+(defn reset! [cell value] (-reset! cell value))
+(defn swap! [cell f & args] (reset! cell (apply f @cell args)))
+(defn add-watch! [cell key watcher] (-add-watch! cell key watcher))
+(defn remove-watch! [cell key] (-remove-watch! cell key))
+(defn watch-count [cell] (-watch-count cell))
+
+(deftype Cursor [source path]
+  IDeref
+  (-deref [this]
+    (collect! this)
+    (get-in @source path))
+  IReactiveCell
+  (-value [this] (get-in @source path))
+  (-reset! [this value]
+    (swap! source assoc-in path value)
+    value)
+  (-add-watch! [this key watcher]
+    (add-watch! source [this key]
+      (fn [_ _ old new]
+        (let [old-value (get-in old path) new-value (get-in new path)]
+          (when (not= old-value new-value)
+            (watcher key this old-value new-value)))))
+    this)
+  (-remove-watch! [this key] (remove-watch! source [this key]) this)
+  (-watch-count [this] (watch-count source)))
+
+(defn cursor [source path] (Cursor. source path))
+
+(deftype Reaction [f value dependencies watches disposed]
+  IDeref
+  (-deref [this]
+    (collect! this)
+    @value)
+  IReactiveCell
+  (-value [this] @value)
+  (-reset! [_ _] (throw (ex-info "reaction is read-only" {})))
+  (-add-watch! [this key watcher]
+    (clojure.core/swap! watches assoc key watcher) this)
+  (-remove-watch! [this key]
+    (clojure.core/swap! watches dissoc key) this)
+  (-watch-count [_] (count @watches)))
+
+(defn- recompute! [reaction]
+  (let [collector (clojure.core/atom #{})
+        old @(.value reaction)
+        new (binding [*collector* collector] ((.f reaction)))
+        old-deps @(.dependencies reaction)
+        new-deps @collector]
+    (doseq [dep old-deps] (remove-watch! dep reaction))
+    (clojure.core/reset! (.dependencies reaction) new-deps)
+    (doseq [dep new-deps]
+      (add-watch! dep reaction (fn [_ _ _ _] (recompute! reaction))))
+    (clojure.core/reset! (.value reaction) new)
+    (when (not= old new)
+      (doseq [[key watcher] @(.watches reaction)]
+        (watcher key reaction old new)))
+    new))
+
+(defn reaction [f]
+  (let [r (Reaction. f (clojure.core/atom nil) (clojure.core/atom #{})
+                      (clojure.core/atom {}) (clojure.core/atom false))]
+    (recompute! r)
+    r))
+
+(defn dispose! [reaction]
+  (doseq [dep @(.dependencies reaction)] (remove-watch! dep reaction))
+  (clojure.core/reset! (.dependencies reaction) #{})
+  (clojure.core/reset! (.watches reaction) {})
+  (clojure.core/reset! (.disposed reaction) true)
+  nil)
+
+(defn track [f watcher]
+  (let [collector (clojure.core/atom #{})
+        value (binding [*collector* collector] (f))]
+    (doseq [dep @collector] (add-watch! dep watcher (fn [_ _ _ _] (watcher))))
+    {:value value :dependencies @collector :watcher watcher}))
+
+(defn untrack! [{:keys [dependencies watcher]} _]
+  (doseq [dep dependencies] (remove-watch! dep watcher)))

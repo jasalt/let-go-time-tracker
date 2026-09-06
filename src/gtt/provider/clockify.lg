@@ -1,0 +1,53 @@
+(ns gtt.provider.clockify
+  (:require [gtt.provider :as provider]))
+
+(def api "https://api.clockify.me/api/v1")
+(defn- headers [config] {"X-Api-Key" (:api-key config)
+                          "Content-Type" "application/json"})
+(defn- req [config method path & [body]]
+  (provider/request! {:method method :url (provider/join-url api path)
+                      :headers (headers config) :body body}))
+(defn map-entry [value]
+  {:id (:id value) :description (:description value)
+   :project-id (:projectId value) :task-id (:taskId value)
+   :billable? (boolean (:billable value))
+   :start (get-in value [:timeInterval :start])
+   :end (get-in value [:timeInterval :end])})
+(defn create [config]
+  (let [workspace (:workspace-id config) user (:user-id config)]
+    {:snapshot
+     (fn []
+       (let [running (first (req config :get
+                                 (str "/workspaces/" workspace
+                                      "/user/" user "/time-entries?in-progress=true")))
+             entries (req config :get
+                          (str "/workspaces/" workspace "/user/" user
+                               "/time-entries?page-size=30"))
+             projects (req config :get (str "/workspaces/" workspace "/projects"))]
+         {:running (when running (map-entry running))
+          :entries (mapv map-entry (remove #(nil? (get-in % [:timeInterval :end])) entries))
+          :projects (mapv #(select-keys % [:id :name]) projects)}))
+     :tasks (fn [project-id]
+              (mapv #(select-keys % [:id :name])
+                    (req config :get (str "/workspaces/" workspace
+                                         "/projects/" project-id "/tasks"))))
+     :start (fn [input]
+              (map-entry (req config :post (str "/workspaces/" workspace
+                                           "/time-entries")
+                          {:description (:description input)
+                           :projectId (:project-id input)
+                           :taskId (:task-id input)
+                           :billable (:billable? input)})))
+     :stop (fn [] (map-entry (req config :patch
+                              (str "/workspaces/" workspace "/user/" user
+                                   "/time-entries"))))
+     :save (fn [input]
+             (map-entry (req config :put
+                         (str "/workspaces/" workspace "/time-entries/"
+                              (:id input)) input)))
+     :delete (fn [id] (req config :delete
+                            (str "/workspaces/" workspace "/time-entries/" id)))
+     :continue (fn [id]
+                 (let [old (req config :get
+                                (str "/workspaces/" workspace "/time-entries/" id))]
+                   ((:start (create config)) (map-entry old))))}))

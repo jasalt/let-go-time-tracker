@@ -1,0 +1,62 @@
+(do
+  (def app (gtk-app "org.lgtt.gtt-letgo-gtk"))
+  (defonce ui (atom nil))
+
+  (defn action-map []
+    {:start gtt.actions/start!
+     :stop gtt.actions/stop!
+     :save gtt.actions/save!
+     :refresh gtt.actions/refresh!
+     :select-project gtt.actions/select-project!
+     :select-task gtt.actions/select-task!
+     :set-description gtt.actions/set-description!
+     :set-billable gtt.actions/set-billable!})
+
+  (defn root-view [] (gtt.view/app @gtt.state/app-state (action-map)))
+
+  (defn reload! []
+    (when-let [mount (:mount @ui)]
+      (glimmer.backend/schedule! (:rerender mount))))
+
+  (defn activate! []
+    (let [host {:window (fn [] (gtk-window app))
+                :box (fn [orientation spacing]
+                       (if (= orientation :vertical)
+                         (gtk-vbox spacing) (gtk-hbox spacing)))
+                :label gtk-label :entry gtk-entry :button gtk-button
+                :check-button gtk-check-button :dropdown gtk-dropdown
+                :scrolled-window gtk-scrolled-window
+                :visible! widget-visible! :sensitive! widget-sensitive!
+                :hexpand! widget-hexpand! :vexpand! widget-vexpand!
+                :window-title! window-title! :window-size! window-size!
+                :label! label-text! :button-label! button-label!
+                :entry-text! entry-text! :placeholder! entry-placeholder!
+                :active! check-active! :dropdown-items! dropdown-items!
+                :dropdown-selected! dropdown-selected!
+                :connect-click on-click! :connect-change on-entry-change!
+                :connect-toggle on-toggle! :connect-dropdown on-dropdown-change!
+                :disconnect disconnect!
+                :set-child! set-child-any! :clear-child! clear-child-any!
+                :append! box-append-any! :remove! box-remove-any!
+                :reorder! (fn [_ _ _] nil)
+                :schedule on-idle! :run (fn [f] (f))}
+          _ (glimmer-gtk.core/install! host)
+          mount (glimmer.core/mount!
+                  (fn [] ((deref (resolve (quote root-view))))))
+          window (:handle (:element @(:root mount)))]
+      (reset! ui {:window window :mount mount})
+      (window-present! window)
+      (try
+        (let [config (gtt.config/load-config)
+              service (gtt.application/create config)]
+          (gtt.actions/configure! service)
+          (gtt.actions/refresh!))
+        (catch Exception error
+          (glimmer.ratom/swap! gtt.state/app-state gtt.state/fail (str error))))
+      (every-ms! 1000
+        (fn []
+          (when (get-in @gtt.state/app-state [:snapshot :running])
+            (glimmer.ratom/swap! gtt.state/app-state update :tick (fnil inc 0)))))))
+
+  (on-activate! app activate!)
+  (app-run! app))

@@ -1,0 +1,18 @@
+(ns gtt.config-test
+  (:require [clojure.test :refer [deftest is run-tests]]
+            [gtt.config :as config]
+            [io :as io]
+            [os :as os]))
+
+(deftest canonical-roundtrip-and-legacy-fallback
+  (let [root (str (os/temp-dir) "/lgtt-config-test-" (rand-int 1000000))
+        canonical (str root "/gtt/config.json")
+        legacy (str root "/legacy.json")]
+    (config/save-config! canonical {:api-key "secret" :workspace-id "w"})
+    (is (= "clockify" (:provider (config/load-config canonical legacy))))
+    (is (= "secret" (:api-key (config/load-config canonical legacy))))
+    (io/delete-file canonical)
+    (spit legacy "{\"api_key\":\"old\",\"workspace_id\":\"legacy\"}")
+    (is (= "clockify" (:provider (config/load-config canonical legacy))))))
+
+(run-tests)

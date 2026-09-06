@@ -1,0 +1,109 @@
+(ns glimmer-gtk.core
+  (:require [glimmer.backend :as backend]))
+
+;; GTK main-thread invariant: every function in the host map that touches a
+;; widget is called only by backend operations running on GTK's main loop.
+
+(defn- changed? [old new key]
+  (not= (get old key) (get new key)))
+
+(defn create-backend [host]
+  (letfn [(create! [tag props]
+            {:tag tag
+             :handle
+             (case tag
+               :window ((:window host))
+               :vbox ((:box host) :vertical (or (:spacing props) 0))
+               :hbox ((:box host) :horizontal (or (:spacing props) 0))
+               :label ((:label host) (or (:label props) ""))
+               :entry ((:entry host))
+               :button ((:button host) (or (:label props) ""))
+               :check-button ((:check-button host))
+               :dropdown ((:dropdown host))
+               :scrolled-window ((:scrolled-window host))
+               (throw (ex-info "unsupported GTK tag" {:tag tag})))
+             :handlers (atom {})})
+          (replace-handler! [node kind handler connector]
+            (let [old (get @(:handlers node) kind)]
+              (when old ((:disconnect host) (:handle node) old))
+              (swap! (:handlers node) dissoc kind)
+              (when handler
+                (swap! (:handlers node) assoc kind
+                       (connector (:handle node) handler)))))
+          (apply-props! [node old props]
+            (let [handle (:handle node) tag (:tag node)]
+              (when (changed? old props :visible)
+                ((:visible! host) handle (:visible props)))
+              (when (changed? old props :sensitive)
+                ((:sensitive! host) handle (:sensitive props)))
+              (when (changed? old props :hexpand)
+                ((:hexpand! host) handle (:hexpand props)))
+              (when (changed? old props :vexpand)
+                ((:vexpand! host) handle (:vexpand props)))
+              (case tag
+                :window (do
+                          (when (changed? old props :title)
+                            ((:window-title! host) handle (:title props)))
+                          (when (or (changed? old props :width)
+                                    (changed? old props :height))
+                            ((:window-size! host) handle
+                             (or (:width props) 800) (or (:height props) 600))))
+                :label (when (changed? old props :label)
+                         ((:label! host) handle (:label props)))
+                :button (do
+                          (when (changed? old props :label)
+                            ((:button-label! host) handle (:label props)))
+                          (when (changed? old props :on-click)
+                            (replace-handler! node :click (:on-click props)
+                                              (:connect-click host))))
+                :entry (do
+                         (when (changed? old props :text)
+                           ((:entry-text! host) handle (:text props)))
+                         (when (changed? old props :placeholder)
+                           ((:placeholder! host) handle (:placeholder props)))
+                         (when (changed? old props :on-change)
+                           (replace-handler! node :change (:on-change props)
+                                             (:connect-change host))))
+                :check-button
+                (do
+                  (when (changed? old props :label)
+                    ((:button-label! host) handle (:label props)))
+                  (when (changed? old props :active)
+                    ((:active! host) handle (:active props)))
+                  (when (changed? old props :on-change)
+                    (replace-handler! node :change (:on-change props)
+                                      (:connect-toggle host))))
+                :dropdown
+                (do
+                  (when (changed? old props :items)
+                    ((:dropdown-items! host) handle (:items props)))
+                  (when (changed? old props :selected-index)
+                    ((:dropdown-selected! host) handle (or (:selected-index props) 0)))
+                  (when (changed? old props :on-change)
+                    (replace-handler! node :change (:on-change props)
+                                      (:connect-dropdown host))))
+                nil)))
+          (append! [parent child]
+            ((if (#{:window :scrolled-window} (:tag parent))
+               (:set-child! host) (:append! host))
+             (:handle parent) (:handle child)))
+          (remove! [parent child]
+            ((if (#{:window :scrolled-window} (:tag parent))
+               (:clear-child! host) (:remove! host))
+             (:handle parent) (:handle child)))
+          (replace! [parent old child]
+            (remove! parent old) (append! parent child))]
+    {:create! create!
+     :apply-props! apply-props!
+     :append-child! append!
+     :remove-child! remove!
+     :replace-child! replace!
+     :reorder-child! (fn [parent child index]
+                       ((:reorder! host) (:handle parent) (:handle child) index))
+     :schedule (:schedule host)
+     :run (:run host)
+     :text->element #(create! :label {:label (str %)})}))
+
+(defn install! [host]
+  (backend/register! :gtk (create-backend host))
+  (backend/select! :gtk))

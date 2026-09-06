@@ -1,0 +1,29 @@
+(ns gtt.provider
+  (:require [http :as http]
+            [json :as json]
+            [clojure.string :as string]))
+
+(defn request! [{:keys [method url headers body]}]
+  (let [response (http/request {:method (or method :get) :url url
+                                :headers headers
+                                :body (when body (json/write-json body))})
+        status (:status response)
+        parsed (when (seq (:body response))
+                 (json/read-json (:body response) {:keywords? true}))]
+    (if (<= 200 status 299)
+      parsed
+      (throw (ex-info "provider HTTP error"
+                      {:status status :url url :body (:body response)})))))
+
+(defn join-url [base path]
+  (str (string/replace base #"/$" "") path))
+
+(defn provider [config]
+  (case (keyword (or (:provider config) "clockify"))
+    :clockify (do (require (quote gtt.provider.clockify))
+                  ((resolve 'gtt.provider.clockify/create) config))
+    :kimai (do (require (quote gtt.provider.kimai))
+               ((resolve 'gtt.provider.kimai/create) config))
+    :mock (do (require (quote gtt.provider.mock))
+              ((resolve 'gtt.provider.mock/create) config))
+    (throw (ex-info "unsupported provider" {:provider (:provider config)}))))

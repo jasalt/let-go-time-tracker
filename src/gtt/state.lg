@@ -1,0 +1,37 @@
+(ns gtt.state
+  (:require [glimmer.ratom :as r]))
+
+(def initial-state
+  {:status :loading
+   :snapshot {:running nil :today-ms 0 :entries [] :projects []}
+   :tasks []
+   :form {:description "" :project-id nil :task-id nil :billable? false}
+   :request {:kind nil :pending? false :generation 0}
+   :error nil})
+
+(defonce app-state (r/atom initial-state))
+
+(defn running->form [running]
+  (if running
+    {:description (or (:description running) "")
+     :project-id (:project-id running)
+     :task-id (:task-id running)
+     :billable? (boolean (:billable? running))}
+    {:description "" :project-id nil :task-id nil :billable? false}))
+
+(defn apply-snapshot [state snapshot]
+  (assoc state :status :ready :snapshot snapshot :error nil
+         :form (running->form (:running snapshot))
+         :request (assoc (:request state) :kind nil :pending? false)))
+
+(defn select-project [state project-id]
+  (-> state
+      (assoc-in [:form :project-id] project-id)
+      (assoc-in [:form :task-id] nil)
+      (assoc :tasks [])))
+
+(defn select-task [state task-id] (assoc-in state [:form :task-id] task-id))
+(defn set-field [state field value] (assoc-in state [:form field] value))
+(defn fail [state message]
+  (assoc state :status :error :error message
+         :request (assoc (:request state) :kind nil :pending? false)))

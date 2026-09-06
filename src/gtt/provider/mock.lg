@@ -1,0 +1,25 @@
+(ns gtt.provider.mock)
+
+(defonce data
+  (atom {:projects [{:id "project-a" :name "Project A"}
+                    {:id "project-b" :name "Project B"}]
+         :tasks {"project-a" [{:id "task-a1" :name "Task A1"}]
+                 "project-b" []}
+         :entries [{:id "entry-1" :description "Completed work"
+                    :elapsed "00:30:00"}]
+         :running nil :today "00:30:00" :elapsed "00:00:00"}))
+
+(defn create [_]
+  {:snapshot #(select-keys @data [:projects :entries :running :today :elapsed])
+   :tasks #(get-in @data [:tasks %] [])
+   :start (fn [input]
+            (let [entry (assoc input :id "running" :elapsed "00:00:00")]
+              (swap! data assoc :running entry) entry))
+   :stop (fn [] (let [entry (:running @data)] (swap! data assoc :running nil) entry))
+   :save (fn [input] (swap! data assoc :running input) input)
+   :delete (fn [id] (swap! data update :entries
+                            #(vec (remove (fn [e] (= id (:id e))) %))))
+   :continue (fn [id]
+               (let [entry (first (filter #(= id (:id %)) (:entries @data)))
+                     running (assoc entry :id "running")]
+                 (swap! data assoc :running running) running))})

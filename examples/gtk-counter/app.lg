@@ -1,0 +1,57 @@
+(do
+  (require (quote glimmer.backend))
+  (require (quote glimmer.core))
+  (require (quote glimmer.ratom))
+  (require (quote glimmer-gtk.core))
+
+  (defonce state (glimmer.ratom/atom {:count 0 :ticks 0}))
+  (defonce ui (atom nil))
+  (def app (gtk-app "org.lgtt.gtk-counter"))
+
+  (defn view []
+    (let [{:keys [count ticks]} @state]
+      [:vbox {:spacing 8}
+       [:label {:label (str "Count: " count "  Timer: " ticks)}]
+       [:button {:label "Increment"
+                 :on-click (fn []
+                             (glimmer.ratom/swap! state update :count inc))}]]))
+
+  (defn reload! []
+    (when-let [mount (:mount @ui)]
+      (glimmer.backend/schedule! (:rerender mount))))
+
+  (defn activate! []
+    (let [window (gtk-window app)
+          host {:box (fn [_ spacing] (gtk-vbox spacing))
+                :label gtk-label
+                :button gtk-button
+                :label! label-text!
+                :button-label! button-label!
+                :visible! widget-visible!
+                :sensitive! widget-sensitive!
+                :hexpand! widget-hexpand!
+                :vexpand! widget-vexpand!
+                :connect-click on-click!
+                :disconnect disconnect!
+                :append! box-append-any!
+                :remove! box-remove-any!
+                :reorder! (fn [_ _ _] nil)
+                :schedule on-idle!
+                :run (fn [f] (f))}
+          _ (glimmer-gtk.core/install! host)
+          mount (glimmer.core/mount! (fn [] ((deref (resolve (quote view))))))
+          root (:handle (:element @(:root mount)))]
+      (reset! ui {:window window :mount mount})
+      (window-title! window "let-go GTK Counter")
+      (window-size! window 360 140)
+      (window-child-any! window root)
+      (every-ms! 1000
+        (fn []
+          (glimmer.ratom/swap! state update :ticks inc)
+          (window-title! window
+            (str "let-go GTK Counter — " (:count @state)))))
+      (window-present! window)))
+
+  (println "gtk-counter: starting Glimmer application")
+  (on-activate! app activate!)
+  (app-run! app))

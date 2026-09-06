@@ -1,0 +1,87 @@
+(ns gtt.actions
+  (:require [gtt.state :as state]
+            [glimmer.ratom :as r]))
+
+(defonce next-generation (atom 0))
+(defonce effects (atom {}))
+(defonce executor (atom (fn [f] (go (f)))))
+
+(defn configure! [effect-map & [run-fn]]
+  (reset! effects effect-map)
+  (when run-fn (reset! executor run-fn)))
+
+(defn- begin! [kind]
+  (let [generation (swap! next-generation inc)]
+    (r/swap! state/app-state assoc :request
+             {:kind kind :pending? true :generation generation} :error nil)
+    generation))
+
+(defn- current? [generation]
+  (= generation (get-in @state/app-state [:request :generation])))
+
+(defn- complete! [generation result on-success]
+  (when (current? generation)
+    (if-let [error (:error result)]
+      (r/swap! state/app-state state/fail (str error))
+      (r/swap! state/app-state
+               (fn [s]
+                 (-> (on-success s (:ok result))
+                     (assoc :request {:kind nil :pending? false
+                                      :generation generation})
+                     (assoc :error nil)))))))
+
+(defn- request! [kind effect args on-success]
+  (let [generation (begin! kind) f (get @effects effect)]
+    (@executor
+      (fn []
+        (try
+          (complete! generation {:ok (apply f args)} on-success)
+          (catch Exception error
+            (complete! generation {:error error} on-success)))))
+    generation))
+
+(defn refresh! []
+  (request! :refresh :snapshot [] state/apply-snapshot))
+
+(defn start! []
+  (request! :start :start [(get @state/app-state :form)]
+            (fn [s entry]
+              (-> s (assoc-in [:snapshot :running] entry)
+                  (assoc :form (state/running->form entry))))))
+
+(defn stop! []
+  (request! :stop :stop []
+            (fn [s _]
+              (-> s (assoc-in [:snapshot :running] nil)
+                  (assoc :form (state/running->form nil))))))
+
+(defn save! []
+  (request! :save :save [(get @state/app-state :form)]
+            (fn [s entry] (assoc-in s [:snapshot :running] entry))))
+
+(defn delete! [entry-id]
+  (request! :delete :delete [entry-id]
+            (fn [s _]
+              (update-in s [:snapshot :entries]
+                         #(vec (remove (fn [e] (= entry-id (:id e))) %))))))
+
+(defn continue! [entry-id]
+  (request! :continue :continue [entry-id]
+            (fn [s entry]
+              (-> s (assoc-in [:snapshot :running] entry)
+                  (assoc :form (state/running->form entry))))))
+
+(defn select-task! [task-id]
+  (r/swap! state/app-state state/select-task task-id))
+
+(defn set-description! [text]
+  (r/swap! state/app-state state/set-field :description text))
+
+(defn set-billable! [active]
+  (r/swap! state/app-state state/set-field :billable? active))
+
+(defn select-project! [project-id]
+  (r/swap! state/app-state state/select-project project-id)
+  (when project-id
+    (request! :tasks :tasks [project-id]
+              (fn [s tasks] (assoc s :tasks tasks)))))

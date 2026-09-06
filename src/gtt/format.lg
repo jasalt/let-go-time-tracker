@@ -1,0 +1,9 @@
+(ns gtt.format)
+
+(defn two [n] (if (< n 10) (str "0" n) (str n)))
+(defn clock [milliseconds]
+  (let [seconds (quot (max 0 milliseconds) 1000)
+        hours (quot seconds 3600)
+        minutes (quot (mod seconds 3600) 60)
+        secs (mod seconds 60)]
+    (str (two hours) ":" (two minutes) ":" (two secs))))

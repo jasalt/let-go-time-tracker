@@ -1,4 +1,8 @@
 
+# Build and runtime artifacts
+/build/
+/.nrepl-port
+
 # Beads / Dolt files (added by bd init)
 .dolt/
 *.db

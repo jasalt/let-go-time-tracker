@@ -1,0 +1,19 @@
+(ns gtt.application
+  (:require [gtt.provider :as provider]))
+
+(defn validate-input [input]
+  (when (> (count (or (:description input) "")) 3000)
+    (throw (ex-info "description exceeds 3000 characters" {})))
+  (when (and (:task-id input) (not (:project-id input)))
+    (throw (ex-info "task requires project" {})))
+  input)
+
+(defn create [config]
+  (let [backend (provider/provider config)]
+    {:snapshot (:snapshot backend)
+     :tasks (:tasks backend)
+     :start (fn [input] ((:start backend) (validate-input input)))
+     :stop (:stop backend)
+     :save (fn [input] ((:save backend) (validate-input input)))
+     :delete (:delete backend)
+     :continue (:continue backend)}))

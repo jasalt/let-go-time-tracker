@@ -1,0 +1,163 @@
+(ns glimmer.core
+  (:require [glimmer.backend :as backend]
+            [glimmer.ratom :as r]))
+
+(defn element-form? [value]
+  (and (vector? value) (seq value)))
+
+(defn- split-element [form]
+  (let [[tag maybe-props & tail] form]
+    (if (map? maybe-props)
+      [tag maybe-props (vec (remove nil? tail))]
+      [tag {} (vec (remove nil? (cons maybe-props tail)))])))
+
+(defn- component-form? [form]
+  (and (element-form? form) (fn? (first form))))
+
+(defn- realize-component [form previous-render]
+  (let [component (first form) args (rest form)
+        render-fn (or previous-render (apply component args))]
+    (if (fn? render-fn)
+      [render-fn (render-fn)]
+      [nil render-fn])))
+
+(declare mount-node! unmount-node! reconcile-node! public-element)
+
+(defn mount-node! [form]
+  (cond
+    (nil? form) nil
+    (component-form? form)
+    (let [[render-fn rendered] (realize-component form nil)
+          child (mount-node! rendered)]
+      {:kind :component :form form :render-fn render-fn :child child})
+
+    (element-form? form)
+    (let [[tag props children] (split-element form)
+          element (backend/create! tag props)
+          child-instances (mapv mount-node! children)]
+      (backend/apply-props! element {} props)
+      (doseq [child child-instances]
+        (when-let [child-element (public-element child)]
+          (backend/append-child! element child-element)))
+      {:kind :element :tag tag :props props :form form :element element
+       :children child-instances})
+
+    :else
+    (let [element (backend/text->element form)]
+      {:kind :text :form form :element element})))
+
+(defn unmount-node! [instance]
+  (when instance
+    (if (= :component (:kind instance))
+      (unmount-node! (:child instance))
+      (doseq [child (:children instance)] (unmount-node! child))))
+  nil)
+
+(defn- public-element [instance]
+  (if (= :component (:kind instance))
+    (public-element (:child instance))
+    (:element instance)))
+
+(defn- form-key [form]
+  (when (and (element-form? form) (map? (second form))) (:key (second form))))
+
+(defn- keyed-children? [old-children new-forms]
+  (and (= (count old-children) (count new-forms))
+       (seq old-children)
+       (every? identity (map #(get-in % [:props :key]) old-children))
+       (every? form-key new-forms)))
+
+(defn- index-of [items item]
+  (first (keep-indexed (fn [index value] (when (= value item) index)) items)))
+
+(defn- reconcile-keyed! [parent old-children new-forms]
+  (let [by-key (into {} (map (fn [child] [(:key (:props child)) child]) old-children))]
+    (mapv (fn [index form]
+            (let [old (get by-key (form-key form))
+                  old-index (index-of old-children old)
+                  new (reconcile-node! old form)]
+              (when (not= old-index index)
+                (backend/reorder-child! parent (public-element new) index))
+              new))
+          (range (count new-forms)) new-forms)))
+
+(defn- reconcile-children! [parent old-children new-forms]
+  (if (keyed-children? old-children new-forms)
+    (reconcile-keyed! parent old-children new-forms)
+    (let [limit (max (count old-children) (count new-forms))]
+      (loop [index 0 result []]
+        (if (= index limit)
+          result
+          (let [old (get old-children index)
+                form (get new-forms index)]
+            (cond
+              (nil? old)
+              (let [new (mount-node! form)]
+                (when new (backend/append-child! parent (public-element new)))
+                (recur (inc index) (conj result new)))
+
+              (nil? form)
+              (do (backend/remove-child! parent (public-element old))
+                  (unmount-node! old)
+                  (recur (inc index) result))
+
+              :else
+              (let [new (reconcile-node! old form)
+                    old-element (public-element old)
+                    new-element (public-element new)]
+                (cond
+                  (and (nil? old-element) new-element)
+                  (backend/append-child! parent new-element)
+
+                  (and old-element (nil? new-element))
+                  (backend/remove-child! parent old-element)
+
+                  (and old-element new-element (not= old-element new-element))
+                  (backend/replace-child! parent old-element new-element))
+                (recur (inc index) (conj result new))))))))))
+
+(defn reconcile-node! [instance form]
+  (cond
+    (= :component (:kind instance))
+    (if (component-form? form)
+      (let [[render-fn rendered] (realize-component form (:render-fn instance))]
+        (assoc instance :form form :render-fn render-fn
+               :child (reconcile-node! (:child instance) rendered)))
+      (mount-node! form))
+
+    (and (= :element (:kind instance)) (element-form? form)
+         (not (component-form? form)) (= (:tag instance) (first form)))
+    (let [[_ props children] (split-element form)]
+      (backend/apply-props! (:element instance) (:props instance) props)
+      (assoc instance :form form :props props
+             :children (reconcile-children! (:element instance)
+                                             (:children instance) children)))
+
+    (and (= :text (:kind instance)) (not (element-form? form)) (= (:form instance) form))
+    instance
+
+    :else (mount-node! form)))
+
+(defn mount! [render-fn]
+  (let [root (atom nil) tracking (atom nil) pending (atom false)
+        rerender (atom nil)]
+    (reset! rerender
+      (fn []
+        (when @tracking (r/untrack! @tracking @rerender))
+        (let [tracked (r/track render-fn
+                        (fn []
+                          (when-not @pending
+                            (reset! pending true)
+                            (backend/schedule!
+                              (fn [] (reset! pending false) (@rerender))))))
+              form (:value tracked)]
+          (reset! tracking tracked)
+          (reset! root (if @root
+                         (reconcile-node! @root form)
+                         (mount-node! form))))))
+    (@rerender)
+    {:root root :rerender @rerender :dispose
+     (fn []
+       (when @tracking (r/untrack! @tracking @rerender))
+       (unmount-node! @root)
+       (reset! root nil))}))

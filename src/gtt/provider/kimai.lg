@@ -1,0 +1,47 @@
+(ns gtt.provider.kimai
+  (:require [gtt.provider :as provider]
+            [clojure.string :as string]))
+
+(defn- api [config]
+  (let [base (string/replace (:server-url config) #"/$" "")]
+    (if (string/ends-with? base "/api") base (str base "/api"))))
+(defn- headers [config] {"Authorization" (str "Bearer " (:api-key config))
+                          "Content-Type" "application/json"})
+(defn- req [config method path & [body]]
+  (provider/request! {:method method :url (provider/join-url (api config) path)
+                      :headers (headers config) :body body}))
+(defn- relation-id [value]
+  (cond (map? value) (str (:id value)) (nil? value) nil :else (str value)))
+(defn map-entry [value]
+  {:id (str (:id value)) :description (:description value)
+   :project-id (relation-id (:project value))
+   :task-id (relation-id (:activity value))
+   :billable? (boolean (:billable value))
+   :start (:begin value) :end (:end value)})
+(defn create [config]
+  {:snapshot
+   (fn []
+     (let [running (first (req config :get "/timesheets/active"))
+           entries (req config :get "/timesheets?size=30")
+           projects (req config :get "/projects?visible=1")]
+       {:running (when running (map-entry running))
+        :entries (mapv map-entry (filter :end entries))
+        :projects (mapv (fn [p] {:id (str (:id p)) :name (:name p)}) projects)}))
+   :tasks (fn [project-id]
+            (mapv (fn [a] {:id (str (:id a)) :name (:name a)})
+                  (req config :get (str "/activities?project=" project-id))))
+   :start (fn [input]
+            (map-entry (req config :post "/timesheets"
+                        {:description (:description input)
+                         :project (:project-id input)
+                         :activity (:task-id input)
+                         :billable (:billable? input)})))
+   :stop (fn []
+           (let [running (first (req config :get "/timesheets/active"))]
+             (map-entry (req config :patch (str "/timesheets/" (:id running) "/stop")))))
+   :save (fn [input]
+           (map-entry (req config :patch (str "/timesheets/" (:id input)) input)))
+   :delete (fn [id] (req config :delete (str "/timesheets/" id)))
+   :continue (fn [id]
+               (let [old (map-entry (req config :get (str "/timesheets/" id)))]
+                 ((:start (create config)) old)))})

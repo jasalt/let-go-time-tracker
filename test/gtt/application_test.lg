@@ -1,0 +1,17 @@
+(ns gtt.application-test
+  (:require [clojure.test :refer [deftest is run-tests]]
+            [gtt.application :as app]))
+
+(deftest input-validation
+  (is (= {:description "ok"} (app/validate-input {:description "ok"})))
+  (is (thrown? Exception (app/validate-input {:task-id "t"})))
+  (is (thrown? Exception
+        (app/validate-input {:description (apply str (repeat 3001 "x"))}))))
+
+(deftest provider-composition-is-provider-neutral
+  (doseq [config [{:provider "clockify" :api-key "k" :workspace-id "w" :user-id "u"}
+                  {:provider "kimai" :api-key "k" :server-url "http://localhost"}]]
+    (is (= #{:snapshot :tasks :start :stop :save :delete :continue}
+           (set (keys (app/create config)))))))
+
+(run-tests)

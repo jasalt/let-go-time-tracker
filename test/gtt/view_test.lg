@@ -1,0 +1,40 @@
+(ns gtt.view-test
+  (:require [clojure.test :refer [deftest is run-tests]]
+            [gtt.state :as state]
+            [gtt.view :as view]))
+
+(def snapshot
+  {:running {:id "run" :description "Review" :project-id "p1"
+             :task-id "t1" :billable? true}
+   :today "01:00:00" :elapsed "00:10:00"
+   :projects [{:id "p1" :name "Project A"}]
+   :entries [{:id "e1" :description "Done" :elapsed "00:30:00"}]})
+
+(deftest snapshot-populates-serializable-form
+  (let [loaded (state/apply-snapshot state/initial-state snapshot)]
+    (is (= :ready (:status loaded)))
+    (is (= "Review" (get-in loaded [:form :description])))
+    (is (= "p1" (get-in loaded [:form :project-id])))
+    (is (true? (get-in loaded [:form :billable?])))
+    (let [changed (state/select-project (assoc loaded :tasks [{:id "old"}]) "p2")]
+      (is (= "p2" (get-in changed [:form :project-id])))
+      (is (nil? (get-in changed [:form :task-id])))
+      (is (empty? (:tasks changed))))))
+
+(deftest controls-derive-from-running-and-pending
+  (let [loaded (state/apply-snapshot state/initial-state snapshot)
+        form (view/timer-actions loaded {})
+        props (map second (drop 2 form))]
+    (is (= [false true true true] (mapv :sensitive props)))
+    (let [pending (assoc-in loaded [:request :pending?] true)
+          pending-props (map second (drop 2 (view/timer-actions pending {})))]
+      (is (= [false false false false] (mapv :sensitive pending-props))))))
+
+(deftest loading-errors-and-entries-render-declaratively
+  (is (= :window (first (view/app state/initial-state {}))))
+  (is (= [:label {:label "bad"}] (view/error-banner {:error "bad"})))
+  (let [entries (view/recent-entries {:snapshot snapshot})]
+    (is (= :vbox (first entries)))
+    (is (= :e1 (keyword (get-in entries [3 1 :key]))))))
+
+(run-tests)

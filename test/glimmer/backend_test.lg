@@ -1,0 +1,57 @@
+(ns glimmer.backend-test
+  (:require [clojure.test :refer [deftest is testing run-tests]]
+            [glimmer.backend :as backend]))
+
+(defn fixture-backend [calls scheduled]
+  {:create! (fn [tag props] (swap! calls conj [:create tag props]) {:tag tag})
+   :apply-props! (fn [e old new] (swap! calls conj [:props e old new]))
+   :append-child! (fn [p c] (swap! calls conj [:append p c]))
+   :remove-child! (fn [p c] (swap! calls conj [:remove p c]))
+   :replace-child! (fn [p o n] (swap! calls conj [:replace p o n]))
+   :reorder-child! (fn [p c i] (swap! calls conj [:reorder p c i]))
+   :schedule (fn [f] (swap! scheduled conj f))
+   :run (fn [f] (f))
+   :text->element (fn [s] {:tag :text :text (str s)})})
+
+(deftest registration-and-errors
+  (backend/reset-backends!)
+  (is (thrown? Exception (backend/backend)))
+  (is (thrown? Exception (backend/register! "bad" {})))
+  (backend/register! :partial {})
+  (backend/select! :partial)
+  (is (= :partial (:name (backend/backend))))
+  (is (thrown? Exception (backend/create! :x {})))
+  (backend/unregister! :partial)
+  (is (nil? @backend/active-backend)))
+
+(deftest operation-dispatch
+  (backend/reset-backends!)
+  (let [calls (atom []) scheduled (atom [])]
+    (backend/register! :mock (fixture-backend calls scheduled))
+    (backend/select! :mock)
+    (is (= {:tag :label} (backend/create! :label {:text "a"})))
+    (backend/apply-props! :e {:a 1} {:a 2})
+    (backend/append-child! :p :c)
+    (backend/remove-child! :p :c)
+    (backend/replace-child! :p :old :new)
+    (backend/reorder-child! :p :c 2)
+    (is (= {:tag :text :text "42"} (backend/text->element 42)))
+    (is (= [[:create :label {:text "a"}]
+            [:props :e {:a 1} {:a 2}]
+            [:append :p :c] [:remove :p :c]
+            [:replace :p :old :new] [:reorder :p :c 2]] @calls))))
+
+(deftest scheduler-fallback-and-loop
+  (backend/reset-backends!)
+  (let [calls (atom []) scheduled (atom []) result (atom 0)]
+    (backend/register! :mock (fixture-backend calls scheduled))
+    (backend/select! :mock)
+    (backend/schedule! #(swap! result inc))
+    (is (= 1 @result))
+    (backend/run! #(backend/schedule! (fn [] (swap! result inc))))
+    (is (= 1 (count @scheduled)))
+    ((first @scheduled))
+    (is (= 2 @result))
+    (is (false? @backend/loop-running))))
+
+(run-tests)

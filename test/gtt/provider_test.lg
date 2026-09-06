@@ -1,0 +1,25 @@
+(ns gtt.provider-test
+  (:require [clojure.test :refer [deftest is run-tests]]
+            [gtt.format :as format]
+            [gtt.provider.clockify :as clockify]
+            [gtt.provider.kimai :as kimai]))
+
+(deftest clockify-mapping
+  (is (= {:id "e" :description "Review" :project-id "p" :task-id "t"
+          :billable? true :start "s" :end "e"}
+         (clockify/map-entry
+           {:id "e" :description "Review" :projectId "p" :taskId "t"
+            :billable true :timeInterval {:start "s" :end "e"}}))))
+
+(deftest kimai-mapping-normalizes-relations
+  (is (= {:id "42" :description "Review" :project-id "7" :task-id "8"
+          :billable? false :start "s" :end nil}
+         (kimai/map-entry
+           {:id 42 :description "Review" :project {:id 7} :activity 8
+            :billable false :begin "s" :end nil}))))
+
+(deftest duration-format
+  (is (= "00:00:00" (format/clock -1)))
+  (is (= "01:01:01" (format/clock 3661000))))
+
+(run-tests)

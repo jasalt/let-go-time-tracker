@@ -1,0 +1,73 @@
+(ns gtt.view
+  (:require [gtt.state :as state]))
+
+(defn index-of [items item]
+  (or (first (keep-indexed (fn [index value] (when (= value item) index)) items)) 0))
+
+(defn project-select [{:keys [snapshot form]} actions]
+  (let [projects (:projects snapshot)
+        ids (into [nil] (map :id projects))
+        selected (index-of ids (:project-id form))]
+    [:dropdown {:items (into ["No project"] (map :name projects))
+                :selected-index (max 0 selected)
+                :on-change (fn [index] ((:select-project actions) (nth ids index)))}]))
+
+(defn task-select [{:keys [tasks form]} actions]
+  (let [ids (into [nil] (map :id tasks))
+        selected (index-of ids (:task-id form))]
+    [:dropdown {:items (into ["No task"] (map :name tasks))
+                :selected-index (max 0 selected)
+                :on-change (fn [index] ((:select-task actions) (nth ids index)))}]))
+
+(defn timer-form [{:keys [form] :as app} actions]
+  [:vbox {:spacing 6}
+   [:label {:label "Description"}]
+   [:entry {:text (:description form)
+            :placeholder "What are you working on?"
+            :on-change (fn [text] ((:set-description actions) text))}]
+   [project-select app actions]
+   [task-select app actions]
+   [:check-button {:label "Billable" :active (:billable? form)
+                   :on-change (fn [active] ((:set-billable actions) active))}]])
+
+(defn timer-status [{:keys [snapshot]}]
+  (let [running (:running snapshot)]
+    [:vbox
+     [:label {:label (str "Elapsed: " (or (:elapsed snapshot) "00:00:00"))}]
+     [:label {:label (str "Today: " (or (:today snapshot) "00:00:00"))}]
+     (when running [:label {:label (str "Running: " (:description running))}])]))
+
+(defn timer-actions [{:keys [snapshot request]} actions]
+  (let [running? (boolean (:running snapshot)) pending? (:pending? request)]
+    [:hbox {:spacing 6}
+     [:button {:label "Start" :sensitive (and (not running?) (not pending?))
+               :on-click (:start actions)}]
+     [:button {:label "Stop" :sensitive (and running? (not pending?))
+               :on-click (:stop actions)}]
+     [:button {:label "Save changes" :sensitive (and running? (not pending?))
+               :on-click (:save actions)}]
+     [:button {:label "Refresh" :sensitive (not pending?)
+               :on-click (:refresh actions)}]]))
+
+(defn error-banner [{:keys [error]}]
+  (when error [:label {:label error}]))
+
+(defn recent-entries [{:keys [snapshot]}]
+  (into [:vbox {:spacing 4}
+         [:label {:label "Recent entries"}]]
+        (map (fn [entry]
+               [:label {:key (:id entry)
+                        :label (str (:description entry) " — " (:elapsed entry))}])
+             (:entries snapshot))))
+
+(defn app
+  ([] (app @state/app-state {}))
+  ([app-state actions]
+   [:window {:title "Go Time Tracker" :width 800 :height 600}
+    [:vbox {:spacing 8}
+     (when (= :loading (:status app-state)) [:label {:label "Loading…"}])
+     [timer-form app-state actions]
+     [timer-status app-state]
+     [timer-actions app-state actions]
+     [error-banner app-state]
+     [:scrolled-window {:vexpand true} [recent-entries app-state]]]]))

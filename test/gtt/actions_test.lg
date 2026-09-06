@@ -1,0 +1,49 @@
+(ns gtt.actions-test
+  (:require [clojure.test :refer [deftest is run-tests]]
+            [gtt.actions :as actions]
+            [gtt.state :as state]
+            [glimmer.ratom :as r]))
+
+(defn reset-state! [] (r/reset! state/app-state state/initial-state))
+
+(deftest refresh-success-and-error
+  (reset-state!)
+  (actions/configure! {:snapshot (fn [] {:running nil :projects [] :entries []})}
+                      (fn [f] (f)))
+  (actions/refresh!)
+  (is (= :ready (:status @state/app-state)))
+  (is (false? (get-in @state/app-state [:request :pending?])))
+  (actions/configure! {:snapshot (fn [] (throw (ex-info "network" {})))}
+                      (fn [f] (f)))
+  (actions/refresh!)
+  (is (= :error (:status @state/app-state)))
+  (is (some? (:error @state/app-state))))
+
+(deftest mutations-use-form-and-load-tasks
+  (reset-state!)
+  (let [seen (atom nil)]
+    (actions/configure!
+      {:start #(reset! seen %)
+       :tasks (fn [project] [{:id "t" :project project}])}
+      (fn [f] (f)))
+    (r/swap! state/app-state state/set-field :description "Review")
+    (actions/start!)
+    (is (= "Review" (:description @seen)))
+    (actions/select-project! "p")
+    (is (= "p" (get-in @state/app-state [:form :project-id])))
+    (is (= [{:id "t" :project "p"}] (:tasks @state/app-state)))))
+
+(deftest stale-response-is-discarded
+  (reset-state!)
+  (let [jobs (atom []) values (atom [{:running nil :marker :old}
+                                     {:running nil :marker :new}])]
+    (actions/configure!
+      {:snapshot (fn [] (let [v (first @values)] (swap! values rest) v))}
+      #(swap! jobs conj %))
+    (actions/refresh!)
+    (actions/refresh!)
+    ((first @jobs))
+    ((second @jobs))
+    (is (= :new (get-in @state/app-state [:snapshot :marker])))))
+
+(run-tests)
